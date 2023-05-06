@@ -16,7 +16,7 @@ UNIQUE_STRING = "]]Purple unicorns tacos[["
 def message_hello(event, say):
     # say() sends a message to the channel where the event was triggered
     print(event)
-    llm = OpenAI(temperature=0.9)
+    llm = OpenAI(temperature=0.0)
     query = event["text"]
     prompt_template = """Use the following pieces of context to answer the question at the end in the voice and style of Burt Reynolds. If you don't know the answer, only say "{UNIQUE_PHRASE}", don't try to make up an answer.
     
