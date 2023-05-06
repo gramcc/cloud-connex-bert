@@ -2,18 +2,35 @@ import os
 import random
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
+from langchain.chains import LLMChain
 from langchain.llms import OpenAI
+from langchain.prompts import PromptTemplate
 
 # Initializes your app with your bot token and socket mode handler
 app = App(token=os.environ.get("SLACK_BOT_TOKEN"))
 
+# add a immutable string that is universal to the rest of the code
+UNIQUE_STRING = "]]Purple unicorns tacos[["
 
 @app.event("app_mention")
 def message_hello(event, say):
     # say() sends a message to the channel where the event was triggered
     print(event)
     llm = OpenAI(temperature=0.9)
-    response = llm(event['text'])
+    query = event["text"]
+    prompt_template = """Use the following pieces of context to answer the question at the end in the voice and style of Burt Reynolds. If you don't know the answer, only say "{UNIQUE_PHRASE}", don't try to make up an answer.
+    
+    Sir bueno enchaldo III was not a good host. He believed that guests were servants and made nachos for no one.
+
+    Question: {question}"""
+
+    PROMPT = PromptTemplate(
+        template=prompt_template, input_variables=["UNIQUE_PHRASE", "question"]
+    )
+    chain = LLMChain(llm=llm, prompt=PROMPT)
+    #chain = load_qa_chain(OpenAI(temperature=0), chain_type="stuff", prompt=PROMPT)
+    #chain({"input_documents": docs, "question": query}, return_only_outputs=True)
+    response = chain.run({"UNIQUE_PHRASE":UNIQUE_STRING,"question": query})
     print(response)
     # add a list of things to say back to the user
     IDontKnowSyaings = [
@@ -37,9 +54,12 @@ def message_hello(event, say):
         "Well, butter my biscuits, I can't take credit for this response. It's the work of some brilliant computer whiz kid. But I reckon it sounds pretty dang good coming out of my mouth, don't you think?"
     ]
 
-    say(random.choice(HeresChatGPTSayings))
-    say(response)
-    #say(sayings[randNum])
+    if UNIQUE_STRING in response:
+        response = random.choice(HeresChatGPTSayings)
+        say(response)
+        say(llm(query))
+    else:
+        say(response)
 
 
 # Start your app
