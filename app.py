@@ -18,7 +18,7 @@ SLACK_USER_ID = os.environ.get("SLACK_USER_ID") # find at slack bot setup page
 app = App(token=os.environ.get("SLACK_BOT_TOKEN"))
 
 # add a immutable string that is universal to the rest of the code
-UNIQUE_STRING = "]]Purple unicorns tacos[["
+UNIQUE_STRING = "Purple unicorns tacos"
 
 @app.event("app_mention")
 def message_hello(event, say):
