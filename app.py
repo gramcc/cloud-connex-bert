@@ -42,7 +42,7 @@ def message_hello(event, say):
     #chain({"input_documents": docs, "question": query}, return_only_outputs=True)
 
 
-    pinecone.init(api_key=PINECONE_API_KEY,environment=PINECONE_API_ENV,namespace="e1e335f")
+    pinecone.init(api_key=PINECONE_API_KEY,environment=PINECONE_API_ENV)
     embeddings = OpenAIEmbeddings()
     docsearch = Pinecone.from_existing_index("cloud-connex-burt", embeddings)
     docs = docsearch.similarity_search(query)
