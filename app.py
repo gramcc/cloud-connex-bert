@@ -45,8 +45,11 @@ def message_hello(event, say):
     pinecone.init(api_key=PINECONE_API_KEY,environment=PINECONE_API_ENV)
     embeddings = OpenAIEmbeddings()
     docsearch = Pinecone.from_existing_index("cloud-connex-burt", embeddings)
-    docs = docsearch.similarity_search(query)
-
+    try:
+        docs = docsearch.similarity_search(query)
+    except:
+        docs = [""]
+    
     response = llm_chain(inputs={"added_context":docs[0],"UNIQUE_PHRASE":UNIQUE_STRING,"question": query})["text"]
     print("\n\nresponse:\n"+response)
     # add a list of things to say back to the user
