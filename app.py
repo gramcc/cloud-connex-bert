@@ -32,14 +32,10 @@ def message_hello(event, say):
 
     Question: {question}"""
 
-    #CONTEXT = "Holidays\nFeb 20                President's Day\nApr 10                Spring Holiday\nMay 29        Memorial Day\nJun 19                Juneteenth\nJuly 4                Independence Day\nSep 4                Labor Day\nNov 23        Thanksgiving\nNov 24        Day after Thanksgiving\nDec 21                Holiday Break\nDec 22        Holiday Break\nDec 25        Holiday Break\nDec 26        Holiday Break\nDec 27        Holiday Break\nDec 28        Holiday Break\nDec 29        Holiday Break\nJan 1                New Years Day 2024\n\n\n\n\nUnpaid leaves of absence\nCloud Connex does not allow unpaid leaves of absence. We do encourage all employees to find the best direction for themselves and encourage everyone to follow the path best suited to their health and happiness. However, we strive to provide the best for our customers and therefore believe that any position should be fully dedicated to that goal.\n\n\nCode of Conduct\nIntroduction"
-
     PROMPT = PromptTemplate(
         template=prompt_template, input_variables=["added_context","UNIQUE_PHRASE", "question"]
     )
     llm_chain = LLMChain(llm=llm, prompt=PROMPT)
-    #chain = load_qa_chain(OpenAI(temperature=0), chain_type="stuff", prompt=PROMPT)
-    #chain({"input_documents": docs, "question": query}, return_only_outputs=True)
 
 
     pinecone.init(api_key=PINECONE_API_KEY,environment=PINECONE_API_ENV)
@@ -47,10 +43,11 @@ def message_hello(event, say):
     docsearch = Pinecone.from_existing_index("cloud-connex-burt", embeddings)
     #try:
     docs = docsearch.similarity_search(query)
-    #except:
-    #    docs = [""]
+    added_context = ""
+    for doc in docs:
+        added_context += doc["text"]+"\n\n"
     
-    response = llm_chain(inputs={"added_context":docs[0],"UNIQUE_PHRASE":UNIQUE_STRING,"question": query})["text"]
+    response = llm_chain(inputs={"added_context":docs,"UNIQUE_PHRASE":UNIQUE_STRING,"question": query})["text"]
     print("\n\nresponse:\n"+response)
     # add a list of things to say back to the user
     IDontKnowSyaings = [
@@ -75,10 +72,9 @@ def message_hello(event, say):
 
     if UNIQUE_STRING in response:
         response = random.choice(HeresChatGPTSayings)
-        if SLACK_USER_ID in response:
-            say(response)
-        else:
-             say("<@"+event["user"]+"> "+response)
+        if event["user"] not in response:
+            response = "<@"+event["user"]+"> "+response
+        say(response)
         say(llm(query))
     else:
         say("<@"+event["user"]+"> "+response)
