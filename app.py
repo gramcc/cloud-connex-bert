@@ -35,7 +35,7 @@ def message_hello(event, say):
     llm = OpenAI(temperature=0.0)
     query = event["text"].replace("<@"+Config.SLACK_USER_ID+">","")
 
-    engine = create_engine(Config.DATABASE_URL)
+    engine = create_engine(Config.SQLALCHEMY_DATABASE_URI)
     Session = sessionmaker(bind=engine)
     session = Session()
 

@@ -11,6 +11,7 @@ class Config:
     SLACK_APP_TOKEN = os.environ.get("SLACK_APP_TOKEN") # find at slack bot setup page
     SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN") # find at slack bot setup page
     DATABASE_URL = os.environ.get("DATABASE_URL") # find at heroku postgres setup page
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL').replace("://", "ql://", 1)
     # add a immutable string that is universal to the rest of the code
     UNIQUE_STRING = "Purple unicorns tacos"
 
