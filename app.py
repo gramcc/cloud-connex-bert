@@ -34,7 +34,7 @@ def message_hello(event, say):
     # say() sends a message to the channel where the event was triggered
     llm = OpenAI(temperature=0.0)
     query = event["text"].replace("<@"+Config.SLACK_USER_ID+">","")
-
+    print("\nquery:\n"+query)
     engine = create_engine(Config.SQLALCHEMY_DATABASE_URI)
     Session = sessionmaker(bind=engine)
     session = Session()
@@ -57,7 +57,7 @@ def message_hello(event, say):
 
     print("\nclassification:\n"+classification)
 
-    if classification == "JIRA" or classification == "Employee Handbook":
+    if classification == "JIRA" or classification == "Employee Handbook" or classification == "No Match":
 
         vector_store_prompt_template = """Use the following pieces of context to answer the question at the end in the voice and style of Burt Reynolds. If you don't know the answer, only say "{UNIQUE_PHRASE}", don't try to make up an answer.
         
@@ -89,13 +89,24 @@ def message_hello(event, say):
         print("\nNo Match:\n")
         response = Config.UNIQUE_STRING
 
-   
+    burt_response = response.strip()
 
     if Config.UNIQUE_STRING in response:
         chatgpt_response = llm(query)
-        response = "I don't know the answer to that question. But here is what ChatGPT says:\n\n"+chatgpt_response
+        burt_response = burtify("I don't know the answer to that question. But here is what ChatGPT says:\n\n")+chatgpt_response
+    
+    say("<@"+event["user"]+"> "+burt_response)
 
-    burt_voice_template = """I'd like the below response rewritten in the voice of Burt Reynolds in the style of his character in the TV show Archer:
+    
+    new_message.response = burt_response
+    session.add(new_message)
+    session.commit()
+
+
+
+def burtify(response):
+    llm = OpenAI(temperature=0.0)
+    burt_voice_template = """I'd like the below text rewritten in the voice of Burt Reynolds in the style of his character in the TV show Archer:
     
     Text: {response}
     """
@@ -105,12 +116,7 @@ def message_hello(event, say):
     )
     llm_chain = LLMChain(llm=llm, prompt=burt_voice_prompt)
     
-    burt_response = llm_chain(inputs={"response":response})["text"]
-    say("<@"+event["user"]+"> "+burt_response)
-
-    new_message.response = burt_response
-    session.add(new_message)
-    session.commit()
+    return llm_chain(inputs={"response":response})["text"]
 
 # Start your app
 if __name__ == "__main__":
