@@ -26,7 +26,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 
 #import Salesforce libraries
-from salesforce import Salesforce
+from salesforce import functions
 
 # import functions
 from jira_functions import functions
@@ -87,8 +87,6 @@ def message_hello(event, say):
         print("\n\nresponse:\n"+response)
 
     elif classification == "j":
-        print("\Config.JIRA_TOKEN:\n"+Config.JIRA_USERNAME)
-        print("\Config.JIRA_TOKEN:\n"+Config.JIRA_TOKEN)
         f = functions.Functions(Config.JIRA_INSTANCE_URL, Config.JIRA_USERNAME, Config.JIRA_TOKEN, Config.OPENAI_API_KEY)
         response = f.answer_prompt(query)
         print(response)
