@@ -1,6 +1,7 @@
 import requests
 import json
 from . import SALESFORCE_STANDARD_OBJECTS
+from datetime import datetime
 
 class Salesforce:
 
@@ -18,7 +19,7 @@ class Salesforce:
         self.password = None
         self.access_token = None
         self.custom_objects = []
-        self.custom_fields = []
+        self.custom_fields = {}
         self.instance_url = None
 
         # Process additional keyword arguments
@@ -26,21 +27,43 @@ class Salesforce:
             setattr(self, key, value)
 
     def answer_prompt(self, prompt):
+        
+        # login
         self.login()
+        print("login")
+        
+        # retrieve relevant objects and fields
         self.get_custom_objects()
-        # print("custom objects")
-        # print(self.custom_objects)
+        print("get custom objects")
         resp = self.get_objects_from_prompt(prompt)
-        #print("resp from get_objects_from_prompt")
-        #print(resp)
         arguments = json.loads(resp["choices"][0]["message"]["function_call"]["arguments"])
         print("arguments from get_objects_from_prompt")
         print(arguments)
         self.get_custom_fields_for_prompt(arguments)
-        print("custom fields")
-        print(self.custom_fields)
         resp = self.get_soql_callout(prompt)
-        return self.review_soql_statement(prompt, json.dumps(resp))
+        print("get soql callout")
+        print(resp)
+        arguments = json.loads(resp["choices"][0]["message"]["function_call"]["arguments"])
+        print("arguments from get_soql_callout")
+        print(arguments)
+        
+        # get soql results
+        print("query salesforce")
+        soql_results = self.sfdc_soql_query(arguments["soql"])
+        print("soql_results")
+        print(soql_results.text)
+        if soql_results.status_code > 300:
+             print("soql failed: retry with reviewed soql")
+             resp = self.review_soql_statement(soql_results.text, arguments["soql"])
+             if "function_call" in resp["choices"][0]["message"]:
+                arguments = json.loads(resp["choices"][0]["message"]["function_call"]["arguments"])
+                print("arguments from review_soql_statement")
+                print(arguments)
+                soql_results = self.sfdc_soql_query(arguments["soql"])
+        
+        answer = self.get_answer_question(prompt, json.dumps(soql_results.json()))
+        return answer
+        
 
 
     def login(self):
@@ -69,6 +92,8 @@ class Salesforce:
         #print(response.status_code)
         #print(response.text)
         self.custom_objects.extend([obj for obj in response.json()["records"]])
+        for obj in self.custom_objects:
+            obj["ApiName"] = obj["DeveloperName"] + "__c"
         return self.custom_objects
     
     def sfdc_tooling_query(self, soql):
@@ -103,42 +128,63 @@ class Salesforce:
 
     def get_custom_fields_for_prompt(self, arguments):
         for custom_object_name in arguments["custom_objects"]:
+            print("getting fields for: "+custom_object_name)
             custom_object_id = self.get_custom_object_id(custom_object_name)
-            soql = f"SELECT DeveloperName FROM CustomField WHERE TableEnumOrId='{custom_object_id}'"
-            response = self.sfdc_tooling_query(soql)
-            #print(response.status_code)
-            #print(response.text)
-            self.custom_fields.extend([obj["DeveloperName"] for obj in response.json()["records"]])
-            return self.custom_fields
+            self.custom_fields[custom_object_name] = self.get_custom_fields(custom_object_id)
 
     def get_custom_object_id(self, custom_object_name):
         for obj in self.custom_objects:
-            if obj["DeveloperName"] == custom_object_name:
+            if obj["ApiName"] == custom_object_name:
                 return obj["Id"]
         return None
 
     def get_custom_fields(self, custom_object):
-        soql = f"SELECT DeveloperName FROM CustomField WHERE TableEnumOrId='{custom_object}'"
+        soql = f"SELECT Id,DeveloperName FROM CustomField WHERE TableEnumOrId='{custom_object}'"
         response = self.sfdc_tooling_query(soql)
+        fields = response.json()["records"]
+        #print(fields)
+        for field in fields:
+            field["ApiName"] = field["DeveloperName"] + "__c"
+            response = self.sfdc_tooling_query(f"SELECT Id,DeveloperName,Metadata FROM CustomField WHERE Id='{field['Id']}'")
+            if response.status_code < 300:
+                #print("metadata")
+                #print(response.json())
+                Metadata = response.json()["records"][0]["Metadata"]
+                field["type"] = Metadata["type"]
+                if field["type"] == "Lookup":
+                    field["referenceTo"] = Metadata["referenceTo"]
         #print(response.status_code)
         #print(response.text)
-        self.custom_fields = [obj["DeveloperName"] for obj in response.json()["records"]]
-        return self.custom_fields
+        return fields
+    
+    def print_custom_fields(self):
+        returnStr = ""
+        for key in self.custom_fields.keys():
+            returnStr = returnStr + f"\nSalesforce Object - {key}\nFields - \n"
+            for field in self.custom_fields[key]:
+                returnStr = returnStr + field["ApiName"] + ":" + field["type"]
+                if field["type"] == "Lookup":
+                    returnStr = returnStr + "(" + field["referenceTo"] + ")"
+                returnStr = returnStr + "\n"
+        returnStr = returnStr + "\n\n"
+        return returnStr
     
     def get_objects_from_prompt(self, prompt):
         headers = {
             "Content-Type": "application/json"
         }
-        custom_object_names = [obj["DeveloperName"] for obj in self.custom_objects]
+        custom_object_names = [ obj["ApiName"] for obj in self.custom_objects]
+        custom_object_names.extend(SALESFORCE_STANDARD_OBJECTS)
         custom_objects_str = "\n".join(custom_object_names)
         content_template = f'Here are all the custom objects in your salesforce instance: \n\n{custom_objects_str}'
-        print(content_template)
+
+        #print("content_template: "+content_template)
         data = {
             "model": "gpt-3.5-turbo-0613",
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a salesforce system administrator trying to match the custom objects with a user prompt."
+                    "content": "You are a salesforce technical architect trying to determine which objects are relevant given the user question."
                 },
                 {
                     "role": "system",
@@ -158,7 +204,7 @@ class Salesforce:
                         "properties": {
                             "custom_objects": {
                                 "type": "array",
-                                "description": "An ordered list of the names of custom objects in the salesforce instance that appear in the user prompt",
+                                "description": "An ordered list of the names of objects in the salesforce instance that appear in the user prompt",
                                 "items": {
                                     "type": "string"
                                 },
@@ -177,18 +223,21 @@ class Salesforce:
          headers = {
             "Content-Type": "application/json"
         }
-         custom_object_names = [obj["DeveloperName"] for obj in self.custom_objects]
-         custom_objects_str = "\n".join(custom_object_names)
-         custom_field_str = "\n".join(self.custom_fields)
+         custom_objects_str = self.print_custom_fields()
+         custom_obj_content_template = f'Here are all the objects and their corresponding custom fields in the salesforce org that you would use to query. Do not use any objects or custom fields not used here: \n\n{custom_objects_str}'
+         #print("custom_obj_content_template: "+custom_obj_content_template)
+         current_datetime = datetime.now().strftime("%m/%d/%Y")
 
-         custom_obj_content_template = f'Here are all the custom objects in your salesforce instance: \n\n{custom_objects_str}\n\nHere are all the custom fields in your salesforce instance: \n\n{custom_field_str}'
-         
          data = {
-            "model": "gpt-3.5-turbo-0613",
+           "model": "gpt-4-0613",
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a salesforce system administrator"
+                    "content": "You are a salesforce developer."
+                },
+                {
+                    "role": "system",
+                    "content": "Today's date is: "+current_datetime+"."
                 },
                 {
                     "role": "system",
@@ -202,41 +251,33 @@ class Salesforce:
             "functions": [
                 {
                     "name": "get_soql_results",
-                    "description": "Query the salesforce instance to understand data",
+                    "description": "SOQL query that answers the user question",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "soql": {
                                 "type": "string",
-                                "description": "A SQOL query to pull data from salesforce production instance"
+                                "description": "A SQOL query to pull data from salesforce rest api. It should only use fields that are provided in the prompt."
                             },
-                            "aggregate": {
-                                "type": "boolean",
-                                "description": "True if the query is an aggregate query using SUM,COUNT,MIN or MAX functions, false otherwise"
-                            },
-                            "headers": {
+                            "fields": {
                                 "type": "array",
-                                "description": "An ordered list of the names for aggregate columns",
+                                "description": "An ordered list of the fields that used in the query that exist from the custom objects in the prompt",
                                 "items": {
                                     "type": "object",
                                     "properties": {
-                                        "field": {
+                                        "ApiName": {
                                             "type": "string",
-                                            "description": "The api name of the field to be aggregated. This should include the function to be used in the aggregate query"
+                                            "description": "The api name of the field"
                                         },
-                                        "alias": {
+                                        "type": {
                                             "type": "string",
-                                            "description": "The alias to be used for the aggregate column in the results"
-                                        },
-                                        "function": {
-                                            "enum": ["SUM", "COUNT", "MIN", "MAX"],
-                                            "description": "The function used on this field in the query. This can be null if the field is not an aggregate field"
+                                            "description": "The type of the field"
                                         },
                                     },
                                 },
                             },
                         },
-                        "required": ["soql", "aggregate"]
+                        "required": ["soql","fields"]
                     }
                 }
             ]
@@ -246,6 +287,48 @@ class Salesforce:
          return response.json()
     
     def review_soql_statement(self, prompt, soql):
+        headers = {
+            "Content-Type": "application/json"
+        }
+         
+        data = {
+            "model": "gpt-4-0613",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Review and fix the soql statement for salesforc rest api. Review the following:\nDate"
+                },
+                {
+                    "role": "system",
+                    "content": "SOQL: "+soql,
+                },
+                {
+                    "role": "user",
+                    "content": "error:\n"+prompt
+                },
+            ],
+            "functions": [
+                {
+                    "name": "review_soql_statement",
+                    "description": "An updated soql query.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "soql": {
+                                "type": "string",
+                                "description": "A SQOL query as a result of fixing errors."
+                            },
+                        },
+                        "required": ["soql"]
+                    }
+                }
+            ]
+        }
+        url = "https://api.openai.com/v1/chat/completions"
+        response = requests.post(url, auth=("", self.openai_api_key), headers=headers, data=json.dumps(data))
+        return response.json()
+
+    def get_aggregate_colums(self, prompt, soql):
          headers = {
             "Content-Type": "application/json"
         }
@@ -255,11 +338,11 @@ class Salesforce:
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a salesforce technical architect trying to review a function call with a soql statement created from a user prompt. You should review and revise the functions soql as needed to more accurately reflect salesforce data. Please include Salesforce standard objects and best practices in your review."
+                    "content": "You are a salesforce architect trying to understand good columns names if the soql statement is aggregate."
                 },
                 {
                     "role": "system",
-                    "content": soql,
+                    "content": "SOQL statement: "+soql,
                 },
                 {
                     "role": "user",
@@ -268,15 +351,11 @@ class Salesforce:
             ],
             "functions": [
                 {
-                    "name": "get_soql_results",
-                    "description": "Query the salesforce instance to understand data",
+                    "name": "get_aggregate_columns",
+                    "description": "Understand the possible aggregate columns in the soql statement",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "soql": {
-                                "type": "string",
-                                "description": "A SQOL query to pull data from salesforce production instance"
-                            },
                             "aggregate": {
                                 "type": "boolean",
                                 "description": "True if the query is an aggregate query using SUM,COUNT,MIN or MAX functions, false otherwise"
@@ -303,7 +382,7 @@ class Salesforce:
                                 },
                             },
                         },
-                        "required": ["soql", "aggregate"]
+                        "required": ["aggregate"]
                     }
                 }
             ]
@@ -311,3 +390,33 @@ class Salesforce:
          url = "https://api.openai.com/v1/chat/completions"
          response = requests.post(url, auth=("", self.openai_api_key), headers=headers, data=json.dumps(data))
          return response.json()
+    
+
+    def get_answer_question(self, prompt, salesforce_data):
+         headers = {
+            "Content-Type": "application/json"
+        }
+         
+         print("Salesforce data: ")
+         print(salesforce_data)
+         data = {
+            "model": "gpt-4",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a salesforce developer trying to answer a question about your salesforce instance from the json. If you see an error or can't solve the question, please say 'I don't know'"
+                },
+                {
+                    "role": "system",
+                    "content": "json: "+salesforce_data,
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+        }
+         url = "https://api.openai.com/v1/chat/completions"
+         response = requests.post(url, auth=("", self.openai_api_key), headers=headers, data=json.dumps(data))
+         return response.json()
+

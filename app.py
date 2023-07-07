@@ -25,12 +25,6 @@ from models.message import Message
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 
-#import Salesforce libraries
-from salesforce import functions
-
-# import functions
-from jira_functions import functions
-
 # Initializes your app with your bot token and socket mode handler
 app = App(token=Config.SLACK_BOT_TOKEN)
 
@@ -87,12 +81,19 @@ def message_hello(event, say):
         print("\n\nresponse:\n"+response)
 
     elif classification == "j":
+        # import functions
+        from jira_functions import functions
         f = functions.Functions(Config.JIRA_INSTANCE_URL, Config.JIRA_USERNAME, Config.JIRA_TOKEN, Config.OPENAI_API_KEY)
         response = f.answer_prompt(query)
         print(response)
         response = response["choices"][0]["message"]["content"]
     elif classification == "s":
-        response = "I don't currently know how to answer Salesforce questions. But I am working on it."
+        #import Salesforce libraries
+        from salesforce.functions import Salesforce
+        s = Salesforce("https://bopsy.my.salesforce.com",Config.OPENAI_API_KEY,client_id=Config.SALESFORCE_CLIENT_ID,client_secret=Config.SALESFORCE_CLIENT_SECRET,username=Config.SALESFORCE_USERNAME,password=Config.SALESFORCE_PASSWORD,security_token=Config.SALESFORCE_SECURITY_TOKEN)
+        response = s.answer_prompt(query)
+        print(response)
+        response = response["choices"][0]["message"]["content"]
     elif classification == "g":
         response = "I don't currently know how to answer calendar questions. But I am working on it."
     else:
