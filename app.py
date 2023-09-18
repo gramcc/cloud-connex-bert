@@ -81,14 +81,21 @@ def handle_message(query):
         response = response["choices"][0]["message"]["content"]
 
     elif classification == "s":
-        # Import Salesforce libraries
-        from salesforce.functions import Salesforce
-        s = Salesforce("https://bopsy.my.salesforce.com", Config.OPENAI_API_KEY, client_id=Config.SALESFORCE_CLIENT_ID, client_secret=Config.SALESFORCE_CLIENT_SECRET, username=Config.SALESFORCE_USERNAME, password=Config.SALESFORCE_PASSWORD, security_token=Config.SALESFORCE_SECURITY_TOKEN)
-        response = s.answer_prompt(query)
-        response = response["choices"][0]["message"]["content"]
+        try:
+            # Import Salesforce libraries
+            from salesforce.functions import Salesforce
+            s = Salesforce("https://bopsy.my.salesforce.com", Config.OPENAI_API_KEY, client_id=Config.SALESFORCE_CLIENT_ID, client_secret=Config.SALESFORCE_CLIENT_SECRET, username=Config.SALESFORCE_USERNAME, password=Config.SALESFORCE_PASSWORD, security_token=Config.SALESFORCE_SECURITY_TOKEN)
+            print("answer_prompt_start")
+            response = s.answer_prompt(query)
+            print(response)
+            response = response["choices"][0]["message"]["content"]
+        
+        except Exception as e:
+            print(str(e))
+            response = burtify("I'm sorry, I'm having trouble with Salesforce right now. Please try again later.")
 
     elif classification == "g":
-        response = "I don't currently know how to answer calendar questions. But I am working on it."
+        response = burtify("I don't currently know how to answer calendar questions. But I am working on it.")
     else:
         print("\nNo Match:\n")
         response = Config.UNIQUE_STRING
@@ -122,6 +129,7 @@ def burtify(response):
 
 def call_openai_api(prompt_template, **kwargs):
     prompt = prompt_template.format(**kwargs)
+    print(prompt)
     response = openai.ChatCompletion.create(
         model="gpt-4",
         messages=[{"role":"user","content":prompt}],

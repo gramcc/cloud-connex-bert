@@ -14,7 +14,7 @@ class Salesforce:
         
         self.client_id = None
         self.client_secret = None
-        self.security_token = None
+        self.security_token = ""
         self.username = None
         self.password = None
         self.access_token = None
@@ -30,7 +30,6 @@ class Salesforce:
         
         # login
         self.login()
-        print("login")
         
         # retrieve relevant objects and fields
         self.get_custom_objects()
@@ -67,7 +66,7 @@ class Salesforce:
 
 
     def login(self):
-        
+
         params = {
             "grant_type": "password",
             "client_id": self.client_id,
@@ -176,6 +175,7 @@ class Salesforce:
         custom_object_names = [ obj["ApiName"] for obj in self.custom_objects]
         custom_object_names.extend(SALESFORCE_STANDARD_OBJECTS)
         custom_objects_str = "\n".join(custom_object_names)
+        print(custom_objects_str)
         content_template = f'Here are all the custom objects in your salesforce instance: \n\n{custom_objects_str}'
 
         #print("content_template: "+content_template)
