@@ -39,6 +39,14 @@ def message_hello(event, say):
     # Create a new message object
     query = event["text"].replace("<@"+Config.SLACK_USER_ID+">","")
 
+    # Extract user_id and channel_id from the event
+    user_id = event.get("user")
+    channel_id = event.get("channel")
+
+    # Print the user_id and channel_id
+    print(f"User ID: {user_id}")
+    print(f"Channel ID: {channel_id}")
+
     say(text=handle_message(query), thread_ts=thread_ts)
 
 

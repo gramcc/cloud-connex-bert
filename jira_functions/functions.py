@@ -96,7 +96,23 @@ class Functions:
             "fields": fields
         }
 
+        print(json.dumps(data))
         response = requests.post(f"{self.instance_url}/rest/api/3/search",auth=(self.username,self.password), headers=headers, data=json.dumps(data))
+        response_json = response.json()
+
+        # Process the response as needed
+        return response_json
+
+    def get_jira_users(self, uql):
+        headers = {
+            "Content-Type": "application/json",
+        }
+        data = {
+            "query": uql
+        }
+
+        print(json.dumps(data))
+        response = requests.get(f"{self.instance_url}/rest/api/3/user/search/query",auth=(self.username,self.password), headers=headers, params=data, allow_redirects=True)
         response_json = response.json()
 
         # Process the response as needed
